@@ -1,4 +1,6 @@
 package com.example.warehouse;
+
+
 import java.util.Queue;
 import java.util.LinkedList;
 import java.util.Random;
@@ -23,7 +25,7 @@ class Warehouse {
                 if (queue.size() >= MAX_QUEUE_SIZE) {
                     System.out.println(producerName + " спит, очередь полна.");
                     lock.unlock();
-                    Thread.sleep(1000);
+                    waitUntilNotFull();
                     continue;
                 }
 
@@ -34,27 +36,33 @@ class Warehouse {
                 if (queue.size() <= MIN_PRODUCER_THRESHOLD) {
                     System.out.println("Пробуждаются производители!");
                     lock.unlock();
-                    Thread.sleep(1000);
+                    waitUntilNotFull();
                 } else {
                     lock.unlock();
                 }
 
                 Thread.sleep(500);
             } catch (InterruptedException e) {
-                e.printStackTrace();
+                Thread.currentThread().interrupt(); // Переустанавливаем флаг прерывания
+                System.err.println("Производитель прерван.");
+                return;
             }
         }
     }
 
     public void consume(String consumerName) {
-        while (running) {
+        while (running || !queue.isEmpty()) {
             try {
                 lock.lock();
-                if (queue.isEmpty()) {
+                while (queue.isEmpty() && running) {
                     System.out.println(consumerName + " спит, очередь пуста.");
                     lock.unlock();
-                    Thread.sleep(1000);
-                    continue;
+                    waitUntilNotEmpty();
+                    lock.lock();
+                }
+
+                if (queue.isEmpty()) {
+                    break; // Если очередь пуста и программа завершается, прерываем цикл
                 }
 
                 int потребленноеЧисло = queue.poll();
@@ -64,8 +72,22 @@ class Warehouse {
                 Thread.sleep(700);
 
             } catch (InterruptedException e) {
-                e.printStackTrace();
+                Thread.currentThread().interrupt(); // Переустанавливаем флаг прерывания
+                System.err.println("Потребитель прерван.");
+                return;
             }
+        }
+    }
+
+    private void waitUntilNotFull() throws InterruptedException {
+        while (queue.size() >= MAX_QUEUE_SIZE && running) {
+            Thread.sleep(1000);
+        }
+    }
+
+    private void waitUntilNotEmpty() throws InterruptedException {
+        while (queue.isEmpty() && running) {
+            Thread.sleep(1000);
         }
     }
 
@@ -92,6 +114,7 @@ class Warehouse {
         while (running) {
             if (scanner.hasNextLine() && scanner.nextLine().equalsIgnoreCase("q")) {
                 stopSimulation();
+                break;
             }
         }
 
@@ -108,10 +131,6 @@ class Warehouse {
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
-
-        // Прерываем потребителей
-        consumer1.interrupt();
-        consumer2.interrupt();
 
         // Ждем завершения работы потребителей
         try {
